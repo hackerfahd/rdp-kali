@@ -1,0 +1,86 @@
+Entername: RDP-LINUX
+on:
+  workflow_dispatch:
+
+jobs:
+  secure-rdp:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3600
+
+    steps:
+      - name: Update System
+        run: |
+          sudo apt update
+
+      - name: Install XFCE Desktop
+        run: |
+          sudo apt install -y xfce4 xfce4-goodies
+
+      - name: Install XRDP
+        run: |
+          sudo apt install -y xrdp
+          sudo systemctl enable xrdp
+          sudo systemctl start xrdp
+
+      - name: Configure XRDP Session
+        run: |
+          echo "startxfce4" | sudo tee /etc/skel/.xsession
+          echo "startxfce4" > ~/.xsession
+
+      - name: Create RDP User with Static Password
+        run: |
+          USER="TOOLBOXLAP"
+          PASS="admin@123"
+
+          if ! id -u $USER >/dev/null 2>&1; then
+            sudo useradd -m -s /bin/bash $USER
+            echo "$USER:$PASS" | sudo chpasswd
+          fi
+
+          sudo usermod -aG sudo $USER
+
+          echo "RDP_CREDS=User: $USER | Password: $PASS" >> $GITHUB_ENV
+
+      - name: Fix XRDP Permissions
+        run: |
+          sudo adduser xrdp ssl-cert
+          sudo systemctl restart xrdp
+
+      - name: Install Tailscale
+        run: |
+          curl -fsSL https://tailscale.com/install.sh | sh
+
+      - name: Establish Tailscale Connection
+        run: |
+          sudo tailscale up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname=gh-runner-${{ github.run_id }}
+
+          IP=""
+          for i in {1..10}; do
+            IP=$(tailscale ip -4)
+            if [ ! -z "$IP" ]; then break; fi
+            sleep 5
+          done
+
+          if [ -z "$IP" ]; then
+            echo "No IP assigned"
+            exit 1
+          fi
+
+          echo "TAILSCALE_IP=$IP" >> $GITHUB_ENV
+
+      - name: Verify RDP Port
+        run: |
+          nc -zv $TAILSCALE_IP 3389 || exit 1
+
+      - name: Maintain Connection
+        run: |
+          echo "=== RDP ACCESS ==="
+          echo "Address: $TAILSCALE_IP"
+          echo "Username: TOOLFAHDHA"
+          echo "Password: admin@123"
+          echo "=================="
+
+          while true; do
+            echo "[$(date)] RDP Active"
+            sleep 300
+          done
